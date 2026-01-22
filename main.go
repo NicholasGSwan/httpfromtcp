@@ -23,12 +23,12 @@ func getLinesChannel(f io.ReadCloser) <-chan string {
 			arr := strings.Split(string(b), "\n")
 			s.WriteString(arr[0])
 			if len(arr) > 1 {
-				fmt.Printf("read: %s\n", s.String())
+				out <- s.String()
 				s.Reset()
 				s.WriteString(arr[1])
 			}
 			if err == io.EOF {
-				fmt.Printf("read: %s\n", s.String())
+				out <- s.String()
 			}
 
 			clear(b)
@@ -48,7 +48,7 @@ func main() {
 	}
 	lines := getLinesChannel(f)
 	for line := range lines {
-		fmt.Println(line)
+		fmt.Printf("read: %s\n", line)
 	}
 
 }
