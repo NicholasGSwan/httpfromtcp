@@ -44,12 +44,12 @@ func main() {
 	//f, err := os.Open("messages.txt")
 
 	lis, err := net.Listen("tcp", "127.0.0.1:42069")
-	defer lis.Close()
+
 	if err != nil {
 		fmt.Println("oops")
 		return
 	}
-
+	defer lis.Close()
 	for true {
 		conn, err1 := lis.Accept()
 		if err1 != nil {
