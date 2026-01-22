@@ -3,6 +3,7 @@ package request
 import (
 	"errors"
 	"io"
+	"regexp"
 	"strings"
 )
 
@@ -49,9 +50,19 @@ func parseRequestLine(req string) (*RequestLine, error) {
 		return &rl, errors.New("Invalid Request Line")
 	}
 
+	met := arr[0]
+	alphanumeric := regexp.MustCompile("^[A-Z]*$")
+	if !alphanumeric.MatchString(met) {
+		return &rl, errors.New("Invalid Http method")
+	}
+	ver := strings.Split(arr[2], "/")[1]
+	if ver != "1.1" {
+		return &rl, errors.New("Invalid Http version")
+	}
 	rl.Method = arr[0]
 	rl.RequestTarget = arr[1]
-	rl.HttpVersion = strings.Split(arr[2], "/")[1]
+
+	rl.HttpVersion = ver
 
 	return &rl, nil
 }
