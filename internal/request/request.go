@@ -6,11 +6,14 @@ import (
 	"io"
 	"regexp"
 	"strings"
+
+	"github.com/nicholasgswan/httpfromtcp/internal/headers"
 )
 
 type Request struct {
 	RequestLine RequestLine
 	ParserState ParserState
+	Headers     headers.Headers
 }
 
 type RequestLine struct {
@@ -23,6 +26,7 @@ type ParserState int
 
 const (
 	initialized ParserState = iota
+	requestStateParsingHeaders
 	done
 )
 const crlf = "\r\n"
@@ -30,6 +34,7 @@ const bufferSize int = 8
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	req := &Request{ParserState: initialized}
+	req.Headers = headers.NewHeaders()
 	b := make([]byte, bufferSize)
 	readToIndex := 0
 
@@ -114,9 +119,13 @@ func (r *Request) parse(data []byte) (int, error) {
 			return 0, nil
 		}
 		r.RequestLine = *rl
+		r.ParserState = requestStateParsingHeaders
+	case requestStateParsingHeaders:
+
+		r.Headers.Parse(data)
 		r.ParserState = done
 	case done:
-		return 0, errors.New("error: trying to read data in a done state.")
+		return 0, errors.New("error: trying to read data in a done state")
 	default:
 		return 0, errors.New("unknown state")
 	}
