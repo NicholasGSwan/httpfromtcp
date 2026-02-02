@@ -122,8 +122,18 @@ func (r *Request) parse(data []byte) (int, error) {
 		r.ParserState = requestStateParsingHeaders
 	case requestStateParsingHeaders:
 
-		r.Headers.Parse(data)
-		r.ParserState = done
+		n, isDone, err := r.Headers.Parse(data)
+		if isDone {
+			r.ParserState = done
+		}
+		if err != nil {
+			if err.Error() == "Header-line missing line ending" && n == 0 {
+				return 0, nil
+			}
+			return 0, err
+		}
+		return bytesRead + n, nil
+
 	case done:
 		return 0, errors.New("error: trying to read data in a done state")
 	default:

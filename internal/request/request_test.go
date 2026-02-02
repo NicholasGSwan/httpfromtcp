@@ -102,12 +102,20 @@ func TestHeadersFromReader(t *testing.T) {
 	_, err = RequestFromReader(reader)
 	require.Error(t, err)
 
-	//"Empty Headers"
-	// reader = &chunkReader{
-	// 	data:            "GET / HTTP/1.1\r\n\r\n",
-	// 	numBytesPerRead: 3,
-	// }
-	// r, err = RequestFromReader(reader)
-	// require.NoError(t, err)
-	// assert.Empty(t, r.Headers)
+	// "Empty Headers"
+	reader = &chunkReader{
+		data:            "GET / HTTP/1.1\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
+	require.NoError(t, err)
+	assert.Empty(t, r.Headers)
+
+	// missing end of headers
+	reader = &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n",
+		numBytesPerRead: 3,
+	}
+	_, err = RequestFromReader(reader)
+	require.Error(t, err)
 }
