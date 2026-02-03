@@ -3,8 +3,10 @@ package request
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/nicholasgswan/httpfromtcp/internal/headers"
@@ -14,6 +16,7 @@ type Request struct {
 	RequestLine RequestLine
 	ParserState ParserState
 	Headers     headers.Headers
+	Body        []byte
 }
 
 type RequestLine struct {
@@ -27,6 +30,7 @@ type ParserState int
 const (
 	initialized ParserState = iota
 	requestStateParsingHeaders
+	parsingBody
 	done
 )
 const crlf = "\r\n"
@@ -47,7 +51,23 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		br, err := reader.Read(b[readToIndex:])
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				req.ParserState = done
+				if req.ParserState == parsingBody {
+					_, err := req.parse(b[readToIndex:])
+					if err != nil {
+						return nil, err
+					}
+					cl, err := strconv.Atoi(req.Headers.Get("content-length"))
+					if err != nil {
+						return nil, err
+					}
+					if cl != len(req.Body) {
+						return nil, errors.New("body length does not match content length!")
+					}
+					break
+				}
+				if req.ParserState != done {
+					return nil, fmt.Errorf("Incomplete Request, in state: %d, read n bytes on EOF: %d", req.ParserState, br)
+				}
 				break
 			}
 			return nil, err
@@ -62,6 +82,8 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		readToIndex -= bp
 
 	}
+
+	fmt.Println(req)
 	return req, nil
 }
 
@@ -107,11 +129,25 @@ func requestLineFromString(req string) (*RequestLine, error) {
 
 func (r *Request) parse(data []byte) (int, error) {
 	bytesRead := 0
-	var err error
+	for r.ParserState != done {
+		n, err := r.parseSingle(data[bytesRead:])
+		if err != nil {
+			return 0, err
+		}
+		bytesRead += n
+		if n == 0 {
+			break
+		}
+	}
+
+	return bytesRead, nil
+
+}
+
+func (r *Request) parseSingle(data []byte) (int, error) {
 	switch r.ParserState {
 	case initialized:
-		var rl *RequestLine
-		rl, bytesRead, err = parseRequestLine(data)
+		rl, bytesRead, err := parseRequestLine(data)
 		if err != nil {
 			return 0, err
 		}
@@ -120,26 +156,52 @@ func (r *Request) parse(data []byte) (int, error) {
 		}
 		r.RequestLine = *rl
 		r.ParserState = requestStateParsingHeaders
+		return bytesRead, nil
 	case requestStateParsingHeaders:
 
 		n, isDone, err := r.Headers.Parse(data)
-		if isDone {
-			r.ParserState = done
-		}
+
 		if err != nil {
-			if err.Error() == "Header-line missing line ending" && n == 0 {
-				return 0, nil
-			}
 			return 0, err
 		}
-		return bytesRead + n, nil
+		if isDone {
+			r.ParserState = parsingBody
+		}
+		return n, nil
+	case parsingBody:
+		cl := r.Headers.Get("content-length")
+		if cl == "" || cl == "0" {
+			r.ParserState = done
+			return 0, nil
+		}
+		clNum, err := strconv.Atoi(cl)
+		if err != nil {
+			return 0, err
+		}
+
+		r.Body = append(r.Body, data...)
+		if clNum != len(r.Body) {
+			return len(data), nil
+		}
+		r.ParserState = done
+		return len(r.Body), nil
 
 	case done:
 		return 0, errors.New("error: trying to read data in a done state")
 	default:
 		return 0, errors.New("unknown state")
 	}
+}
 
-	return bytesRead, err
+func (r *Request) String() string {
+	str := "Request line:\n"
+	str += fmt.Sprintf("- Method: %s\n", r.RequestLine.Method)
+	str += fmt.Sprintf("- Target: %s\n", r.RequestLine.RequestTarget)
+	str += fmt.Sprintf("- Version: %s\n", r.RequestLine.HttpVersion)
+	str += "Headers:\n"
+	for k, v := range r.Headers {
+		str += fmt.Sprintf("- %s: %s\n", k, v)
+	}
+	return str
 
 }

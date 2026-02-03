@@ -22,7 +22,7 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 2, true, nil
 	}
 	if endInd == -1 {
-		return 0, false, errors.New("Header-line missing line ending")
+		return 0, false, nil
 	}
 	str := strings.TrimSpace(string(data[:endInd]))
 	arr := strings.Split(str, " ")
@@ -49,4 +49,9 @@ func (h Headers) Set(key, value string) {
 		h[key] = value
 	}
 
+}
+
+func (h Headers) Get(key string) string {
+	key = strings.ToLower(key)
+	return h[key]
 }
