@@ -13,10 +13,11 @@ import (
 )
 
 type Request struct {
-	RequestLine RequestLine
-	ParserState ParserState
-	Headers     headers.Headers
-	Body        []byte
+	RequestLine     RequestLine
+	ParserState     ParserState
+	Body            []byte
+	Headers         headers.Headers
+	bodyLengthCount int
 }
 
 type RequestLine struct {
@@ -39,6 +40,8 @@ const bufferSize int = 8
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	req := &Request{ParserState: initialized}
 	req.Headers = headers.NewHeaders()
+	req.Body = make([]byte, 0)
+	req.bodyLengthCount = 0
 	b := make([]byte, bufferSize)
 	readToIndex := 0
 
@@ -51,20 +54,6 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		br, err := reader.Read(b[readToIndex:])
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				if req.ParserState == parsingBody {
-					_, err := req.parse(b[readToIndex:])
-					if err != nil {
-						return nil, err
-					}
-					cl, err := strconv.Atoi(req.Headers.Get("content-length"))
-					if err != nil {
-						return nil, err
-					}
-					if cl != len(req.Body) {
-						return nil, errors.New("body length does not match content length!")
-					}
-					break
-				}
 				if req.ParserState != done {
 					return nil, fmt.Errorf("Incomplete Request, in state: %d, read n bytes on EOF: %d", req.ParserState, br)
 				}
@@ -180,11 +169,15 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 		}
 
 		r.Body = append(r.Body, data...)
-		if clNum != len(r.Body) {
-			return len(data), nil
+		r.bodyLengthCount += len(data)
+		if r.bodyLengthCount > clNum {
+			return 0, fmt.Errorf("Content-Length too large")
 		}
-		r.ParserState = done
-		return len(r.Body), nil
+		if clNum == len(r.Body) {
+			r.ParserState = done
+		}
+
+		return len(data), nil
 
 	case done:
 		return 0, errors.New("error: trying to read data in a done state")
@@ -202,6 +195,8 @@ func (r *Request) String() string {
 	for k, v := range r.Headers {
 		str += fmt.Sprintf("- %s: %s\n", k, v)
 	}
+	str += "Body:\n"
+	str += string(r.Body)
 	return str
 
 }
