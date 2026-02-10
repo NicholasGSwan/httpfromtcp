@@ -1,6 +1,7 @@
 package response
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"strconv"
@@ -48,6 +49,14 @@ func WriteHeaders(w io.Writer, headers headers.Headers) error {
 		}
 	}
 	_, err := w.Write([]byte("\r\n"))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func WriteBody(w io.Writer, body *bytes.Buffer) error {
+	_, err := w.Write(body.Bytes())
 	if err != nil {
 		return err
 	}

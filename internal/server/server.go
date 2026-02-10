@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -27,12 +28,17 @@ type Server struct {
 }
 
 type HandlerError struct {
-	statusCode response.StatusCode
-	msg        string
+	StatusCode response.StatusCode
+	Msg        string
 }
 
 func (he HandlerError) Write(w io.Writer) {
-
+	headers := response.GetDefaultHeaders(len(he.Msg))
+	response.WriteStatusLine(w, he.StatusCode)
+	if err := response.WriteHeaders(w, headers); err != nil {
+		fmt.Printf("error: %v/n", err)
+	}
+	w.Write([]byte(he.Msg + "/r/n"))
 }
 
 func Serve(port int, handler Handler) (*Server, error) {
@@ -80,14 +86,22 @@ func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		fmt.Printf("error: %v/n", err)
+		he := &HandlerError{StatusCode: response.BadRequest, Msg: err.Error()}
+		he.Write(conn)
+		return
 	}
-	s.handler(conn, req)
+	buf := &bytes.Buffer{}
+	he := s.handler(buf, req)
+	if he != nil {
+		he.Write(conn)
+		return
+	}
 	fmt.Println("sending response")
-	h := response.GetDefaultHeaders(0)
+	h := response.GetDefaultHeaders(buf.Len())
 	response.WriteStatusLine(conn, response.OK)
 	if err := response.WriteHeaders(conn, h); err != nil {
 		fmt.Printf("error: %v/n", err)
 	}
+	response.WriteBody(conn, buf)
 	return
 }
