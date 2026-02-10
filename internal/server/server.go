@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strconv"
 	"sync/atomic"
@@ -22,8 +21,9 @@ import (
 // )
 
 type Server struct {
-	Open atomic.Bool
-	port int
+	handler  Handler
+	listener net.Listener
+	Open     atomic.Bool
 }
 
 type HandlerError struct {
@@ -31,8 +31,16 @@ type HandlerError struct {
 	msg        string
 }
 
-func Serve(port int) (*Server, error) {
-	s := &Server{Open: atomic.Bool{}, port: port}
+func (he HandlerError) Write(w io.Writer) {
+
+}
+
+func Serve(port int, handler Handler) (*Server, error) {
+	lis, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
+	if err != nil {
+		return nil, err
+	}
+	s := &Server{Open: atomic.Bool{}, listener: lis, handler: handler}
 
 	s.Open.Store(true)
 	go s.listen()
@@ -44,18 +52,16 @@ func (s *Server) Close() error {
 	if s.Open.Load() {
 		return errors.New("Could not close server!")
 	}
+	if s.listener != nil {
+		return s.listener.Close()
+	}
 	return nil
 }
 
 func (s *Server) listen() {
-	lis, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(s.port))
-	if err != nil {
-		log.Fatalf("Could not create Listener : %s", err.Error())
-	}
-	defer lis.Close()
 
 	for s.Open.Load() {
-		conn, err := lis.Accept()
+		conn, err := s.listener.Accept()
 		if err != nil {
 			fmt.Println("Could not accept connection!")
 			return
@@ -72,6 +78,11 @@ type Handler func(w io.Writer, req *request.Request) *HandlerError
 
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
+	req, err := request.RequestFromReader(conn)
+	if err != nil {
+		fmt.Printf("error: %v/n", err)
+	}
+	s.handler(conn, req)
 	fmt.Println("sending response")
 	h := response.GetDefaultHeaders(0)
 	response.WriteStatusLine(conn, response.OK)
