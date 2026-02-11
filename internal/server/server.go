@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -80,7 +79,7 @@ func (s *Server) listen() {
 
 }
 
-type Handler func(w io.Writer, req *request.Request) *HandlerError
+type Handler func(w response.Writer, req *request.Request)
 
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
@@ -90,18 +89,15 @@ func (s *Server) handle(conn net.Conn) {
 		he.Write(conn)
 		return
 	}
-	buf := &bytes.Buffer{}
-	he := s.handler(buf, req)
-	if he != nil {
-		he.Write(conn)
-		return
-	}
-	fmt.Println("sending response")
-	h := response.GetDefaultHeaders(buf.Len())
-	response.WriteStatusLine(conn, response.OK)
-	if err := response.WriteHeaders(conn, h); err != nil {
-		fmt.Printf("error: %v/n", err)
-	}
-	response.WriteBody(conn, buf)
+	w := response.NewWriter(conn)
+	s.handler(w, req)
+
+	// fmt.Println("sending response")
+	// h := response.GetDefaultHeaders(buf.Len())
+	// response.WriteStatusLine(conn, response.OK)
+	// if err := response.WriteHeaders(conn, h); err != nil {
+	// 	fmt.Printf("error: %v/n", err)
+	// }
+	// response.WriteBody(conn, buf)
 	return
 }

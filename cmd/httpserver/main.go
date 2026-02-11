@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -13,6 +12,36 @@ import (
 )
 
 const port = 42069
+
+const badRequestResponse = `<html>
+  <head>
+    <title>400 Bad Request</title>
+  </head>
+  <body>
+    <h1>Bad Request</h1>
+    <p>Your request honestly kinda sucked.</p>
+  </body>
+</html>`
+
+const internalServerErrorResponse = `<html>
+  <head>
+    <title>500 Internal Server Error</title>
+  </head>
+  <body>
+    <h1>Internal Server Error</h1>
+    <p>Okay, you know what? This one is on me.</p>
+  </body>
+</html>`
+
+const successfulResponse = `<html>
+  <head>
+    <title>200 OK</title>
+  </head>
+  <body>
+    <h1>Success!</h1>
+    <p>Your request was an absolute banger.</p>
+  </body>
+</html>`
 
 func main() {
 	server, err := server.Serve(port, handleReq)
@@ -28,18 +57,26 @@ func main() {
 	log.Println("Server gracefully stopped")
 }
 
-func handleReq(w io.Writer, r *request.Request) *server.HandlerError {
+func handleReq(w response.Writer, r *request.Request) {
 	if r.RequestLine.RequestTarget == "/yourproblem" {
-		he := &server.HandlerError{Msg: "Your problem is not my problem", StatusCode: response.BadRequest}
-		he.Write(w)
-		return he
+		w.WriteStatusLine(response.BadRequest)
+		headers := response.GetDefaultHeaders(len(badRequestResponse))
+		headers.Set("content-type", "text/html")
+		w.WriteHeaders(headers)
+		w.WriteBody([]byte(badRequestResponse))
+
 	} else if r.RequestLine.RequestTarget == "/myproblem" {
-		he := &server.HandlerError{Msg: "Woopsie, my bad", StatusCode: response.ServerError}
-		he.Write(w)
-		return he
+		w.WriteStatusLine(response.ServerError)
+		headers := response.GetDefaultHeaders(len(internalServerErrorResponse))
+		headers.Set("content-type", "text/html")
+		w.WriteHeaders(headers)
+		w.WriteBody([]byte(internalServerErrorResponse))
 	} else {
-		w.Write([]byte("All good, frfr\r\n"))
-		return nil
+		w.WriteStatusLine(response.OK)
+		headers := response.GetDefaultHeaders(len(successfulResponse))
+		headers.Set("content-type", "text/html")
+		w.WriteHeaders(headers)
+		w.WriteBody([]byte(successfulResponse))
 	}
 
 }

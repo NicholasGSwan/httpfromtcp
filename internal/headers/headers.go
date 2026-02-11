@@ -43,7 +43,8 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 func (h Headers) Set(key, value string) {
 	key = strings.ToLower(key)
-	if h[key] != "" {
+
+	if h[key] != "" && key != "content-type" {
 		h[key] = h[key] + ", " + value
 	} else {
 		h[key] = value
