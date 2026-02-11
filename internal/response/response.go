@@ -24,6 +24,7 @@ const (
 	writeStatusLine writerStatus = iota
 	writeHeaders
 	writeBody
+	writeComplete
 )
 
 type Writer struct {
@@ -76,6 +77,14 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 
 }
 
+func GetDefaultChunkedHeaders() headers.Headers {
+	h := headers.Headers{}
+	h.Set("Transfer-Encoding", "chunked")
+	h.Set("connection", "close")
+	h.Set("content-type", "text/plain")
+	return h
+}
+
 func WriteHeaders(w io.Writer, headers headers.Headers) error {
 	for k, v := range headers {
 		_, err := fmt.Fprintf(w, "%s: %s\r\n", k, v)
@@ -124,6 +133,33 @@ func (w *Writer) WriteBody(body []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	w.status = writeComplete
+	return n, nil
+}
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	if w.status != writeBody {
+		return 0, errors.New("Writer not in write body state")
+	}
+	n, err := w.writer.Write([]byte(fmt.Sprintf("%x\r\n", len(p))))
+	if err != nil {
+		return 0, err
+	}
+	p = append(p, '\r', '\n')
+	m, err := w.writer.Write(p)
+	if err != nil {
+		return 0, err
+	}
+	return n + m, nil
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	end := []byte("0\r\n\r\n")
+	n, err := w.writer.Write(end)
+	if err != nil {
+		return 0, err
+	}
+	w.status = writeComplete
 	return n, nil
 }
 
