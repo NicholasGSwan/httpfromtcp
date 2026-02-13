@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/nicholasgswan/httpfromtcp/internal/headers"
 	"github.com/nicholasgswan/httpfromtcp/internal/request"
 	"github.com/nicholasgswan/httpfromtcp/internal/response"
 	"github.com/nicholasgswan/httpfromtcp/internal/server"
@@ -94,50 +96,55 @@ func handleReq(w response.Writer, r *request.Request) {
 }
 
 func chunkedRequest(w response.Writer, r *request.Request) {
-	var toBreak bool
 	w.WriteStatusLine(response.OK)
 	h := response.GetDefaultChunkedHeaders()
-	w.WriteHeaders(h)
-	chunk, err := strconv.Atoi(strings.TrimPrefix(r.RequestLine.RequestTarget, "/httpbin/stream/"))
-	if err != nil {
-		fmt.Printf("Could not convert string : %s", err.Error())
-	}
-	url := fmt.Sprintf("https://httpbin.org/stream/%d", chunk)
-
+	url := "https://httpbin.org/" + strings.TrimPrefix(r.RequestLine.RequestTarget, "/httpbin/")
 	resp, err := http.Get(url)
 	if err != nil {
 		fmt.Printf("Could not get response : %s", err.Error())
 	}
 	defer resp.Body.Close()
 	buf := make([]byte, 1024)
+	body := make([]byte, 0)
+	h.Set("Trailer", "X-Content-Length")
+	h.Set("Trailer", "X-Content-SHA256")
+
+	w.WriteHeaders(h)
+	totalBytes := 0
 	for {
 		n, err := resp.Body.Read(buf)
-		if err != nil {
-			if err == io.EOF {
-				toBreak = true
-			} else {
-				fmt.Printf("Could not read response : %s", err.Error())
-			}
-		}
-		written := 0
-		for written < n {
+
+		if n > 0 {
 			var m int
 			var err error
-			if written+chunk > n {
-				m, err = w.WriteChunkedBody(buf[written:n])
-			} else {
-				m, err = w.WriteChunkedBody(buf[written : written+chunk])
-			}
+
+			m, err = w.WriteChunkedBody(buf[:n])
 
 			if err != nil {
 				fmt.Printf("Could not write chunk : %s", err.Error())
 			}
-			written += m
+			body = append(body, buf[:n]...)
+			totalBytes += m
 		}
-		if toBreak {
+
+		if err == io.EOF {
 			break
 		}
-	}
 
-	w.WriteChunkedBodyDone()
+		if err != nil {
+			fmt.Printf("could not write chunk %s ", err.Error())
+		}
+	}
+	n, err := w.WriteChunkedBodyDone()
+	if err != nil {
+		fmt.Printf("Error finishing writing the body: %s", err.Error())
+	}
+	totalBytes += n
+	hash := sha256.Sum256(body)
+	t := headers.NewHeaders()
+	t.Set("X-Content-Length", strconv.Itoa(len(body)))
+	t.Set("X-Content-SHA256", fmt.Sprintf("%x", hash[:]))
+
+	w.WriteTralers(t)
+
 }

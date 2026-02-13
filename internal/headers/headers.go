@@ -56,3 +56,12 @@ func (h Headers) Get(key string) string {
 	key = strings.ToLower(key)
 	return h[key]
 }
+
+func (h Headers) Replace(key, value string) {
+	key = strings.ToLower(key)
+	h[key] = value
+}
+
+func (h Headers) Remove(key string) {
+	delete(h, key)
+}

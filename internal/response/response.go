@@ -24,6 +24,7 @@ const (
 	writeStatusLine writerStatus = iota
 	writeHeaders
 	writeBody
+	writeTrailers
 	writeComplete
 )
 
@@ -87,6 +88,7 @@ func GetDefaultChunkedHeaders() headers.Headers {
 
 func WriteHeaders(w io.Writer, headers headers.Headers) error {
 	for k, v := range headers {
+
 		_, err := fmt.Fprintf(w, "%s: %s\r\n", k, v)
 		if err != nil {
 			return err
@@ -103,18 +105,8 @@ func (w *Writer) WriteHeaders(headers headers.Headers) error {
 	if w.status != writeHeaders {
 		return errors.New("Writer not in write headers state")
 	}
-	for k, v := range headers {
-		_, err := fmt.Fprintf(w.writer, "%s: %s\r\n", k, v)
-		if err != nil {
-			return err
-		}
-	}
-	_, err := w.writer.Write([]byte("\r\n"))
-	if err != nil {
-		return err
-	}
-	w.status = writeBody
-	return nil
+
+	return w.headerHelperFunc(headers)
 }
 
 func WriteBody(w io.Writer, body *bytes.Buffer) error {
@@ -133,7 +125,7 @@ func (w *Writer) WriteBody(body []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	w.status = writeComplete
+	w.status = writeTrailers
 	return n, nil
 }
 
@@ -145,22 +137,50 @@ func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	p = append(p, '\r', '\n')
 	m, err := w.writer.Write(p)
 	if err != nil {
 		return 0, err
 	}
-	return n + m, nil
+	k, err := w.writer.Write([]byte("\r\n"))
+	return n + m + k, nil
 }
 
 func (w *Writer) WriteChunkedBodyDone() (int, error) {
-	end := []byte("0\r\n\r\n")
+	end := []byte("0\r\n")
 	n, err := w.writer.Write(end)
 	if err != nil {
 		return 0, err
 	}
-	w.status = writeComplete
+	w.status = writeTrailers
 	return n, nil
+}
+
+func (w *Writer) WriteTralers(headers headers.Headers) error {
+	if w.status != writeTrailers {
+		return errors.New("Writer not in write trailer state")
+	}
+	return w.headerHelperFunc(headers)
+}
+
+func (w *Writer) headerHelperFunc(headers headers.Headers) error {
+	for k, v := range headers {
+		fmt.Printf("%s: %s\n", k, v)
+		_, err := fmt.Fprintf(w.writer, "%s: %s\r\n", k, v)
+		if err != nil {
+			return err
+		}
+	}
+	_, err := w.writer.Write([]byte("\r\n"))
+	if err != nil {
+		return err
+	}
+	switch w.status {
+	case writeHeaders:
+		w.status = writeBody
+	case writeTrailers:
+		w.status = writeComplete
+	}
+	return nil
 }
 
 func NewWriter(w io.Writer) Writer {
