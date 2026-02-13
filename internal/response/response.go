@@ -53,19 +53,17 @@ func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
 	if w.status != writeStatusLine {
 		return errors.New("Writer not in Status Line write state")
 	}
+	reasonPhrase := ""
 	switch statusCode {
 	case OK:
-		_, err = w.writer.Write([]byte("HTTP/1.1 200 OK\r\n"))
-		w.status = writeHeaders
+		reasonPhrase = "OK"
 	case BadRequest:
-		_, err = w.writer.Write([]byte("HTTP/1.1 400 Bad Request\r\n"))
-		w.status = writeHeaders
+		reasonPhrase = "Bad Request"
 	case ServerError:
-		_, err = w.writer.Write([]byte("HTTP/1.1 500 Internal Server Error\r\n"))
-		w.status = writeHeaders
-	default:
-		fmt.Println("Did not write statuscode")
+		reasonPhrase = "Internal Server Error"
 	}
+	defer func() { w.status = writeHeaders }()
+	fmt.Fprintf(w.writer, "HTTP/1.1 %d %s\r\n", statusCode, reasonPhrase)
 	return err
 }
 

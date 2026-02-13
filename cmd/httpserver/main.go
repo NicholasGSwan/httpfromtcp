@@ -76,9 +76,11 @@ func handleReq(w response.Writer, r *request.Request) {
 	case "/myproblem":
 		w.WriteStatusLine(response.ServerError)
 		headers := response.GetDefaultHeaders(len(internalServerErrorResponse))
-		headers.Set("content-type", "text/html")
+		headers.Replace("content-type", "text/html")
 		w.WriteHeaders(headers)
 		w.WriteBody([]byte(internalServerErrorResponse))
+	case "/video":
+		videoRequest(w)
 	default:
 		if strings.HasPrefix(r.RequestLine.RequestTarget, "/httpbin/") {
 			chunkedRequest(w, r)
@@ -86,12 +88,26 @@ func handleReq(w response.Writer, r *request.Request) {
 		} else {
 			w.WriteStatusLine(response.OK)
 			headers := response.GetDefaultHeaders(len(successfulResponse))
-			headers.Set("content-type", "text/html")
+			headers.Replace("content-type", "text/html")
 			w.WriteHeaders(headers)
 			w.WriteBody([]byte(successfulResponse))
 		}
 
 	}
+
+}
+
+func videoRequest(w response.Writer) {
+	w.WriteStatusLine(response.OK)
+	vid, err := os.ReadFile("assets/vim.mp4")
+	if err != nil {
+		fmt.Printf("Could not read file: %s", err.Error())
+	}
+	headers := response.GetDefaultHeaders(len(vid))
+	//headers.Remove("Content-length")
+	headers.Replace("content-type", "video/mp4")
+	w.WriteHeaders(headers)
+	w.WriteBody(vid)
 
 }
 

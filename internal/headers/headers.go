@@ -27,7 +27,7 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	str := strings.TrimSpace(string(data[:endInd]))
 	arr := strings.Split(str, " ")
 
-	if len(arr) != 2 || !strings.HasSuffix(arr[0], ":") {
+	if !strings.HasSuffix(arr[0], ":") {
 		return 0, false, errors.New("Malformed Header-line")
 	}
 	key := arr[0][:len(arr[0])-1]
